@@ -74,7 +74,7 @@ public class RSSignatureCaptureView extends View {
 
 		clear();
 
-		// set the bg color as white
+		// set the bg color as white (default)
 		this.setBackgroundColor(Color.WHITE);
 
 		// width and height should cover the screen

@@ -39,7 +39,6 @@ public class RSSignatureCaptureMainView extends LinearLayout implements OnClickL
     Activity mActivity;
     int mOriginalOrientation;
     Boolean saveFileInExtStorage = false;
-    String canvasColor = "";
     String viewMode = "portrait";
     Boolean showNativeButtons = true;
     Boolean showTitleLabel = true;
@@ -60,13 +59,6 @@ public class RSSignatureCaptureMainView extends LinearLayout implements OnClickL
 
         setLayoutParams(new android.view.ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
-        if (!TextUtils.isEmpty(canvasColor)) {
-            try {
-                setBackgroundColor(Integer.decode(canvasColor));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
     }
 
     public void setSaveFileInExtStorage(Boolean saveFileInExtStorage) {
@@ -74,7 +66,13 @@ public class RSSignatureCaptureMainView extends LinearLayout implements OnClickL
     }
 
     public void setCanvasColor(String canvasColor) {
-        this.canvasColor = canvasColor;
+        if (!TextUtils.isEmpty(canvasColor)) {
+            try {
+                signatureView.setBackgroundColor(Integer.decode(canvasColor));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     public void setViewMode(String viewMode) {

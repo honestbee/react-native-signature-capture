@@ -30,7 +30,7 @@
 	_showTitleLabel = YES;
 	if ((self = [super init])) {
 		_border = [CAShapeLayer layer];
-		_border.strokeColor = [UIColor blackColor].CGColor;
+		_border.strokeColor = [UIColor clearColor].CGColor;
 		_border.fillColor = nil;
 		_border.lineDashPattern = @[@4, @2];
 
@@ -58,7 +58,7 @@
 
 		_context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
 
-		CGSize screen = self.bounds.size;
+		CGSize screen = self.frame.size;
 
 		sign = [[PPSSignatureView alloc]
 						initWithFrame: CGRectMake(0, 0, screen.width, screen.height)
@@ -156,6 +156,7 @@
 	_loaded = true;
 	_border.path = [UIBezierPath bezierPathWithRect:self.bounds].CGPath;
 	_border.frame = self.bounds;
+    sign.frame = CGRectMake(0, 0, self.bounds.size.width, self.bounds.size.height);
 }
 
 - (void)setRotateClockwise:(BOOL)rotateClockwise {

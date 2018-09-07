@@ -68,7 +68,7 @@ public class RSSignatureCaptureMainView extends LinearLayout implements OnClickL
     public void setCanvasColor(String canvasColor) {
         if (!TextUtils.isEmpty(canvasColor)) {
             try {
-                signatureView.setBackgroundColor(Integer.decode(canvasColor));
+                signatureView.setBackgroundColor(Color.parseColor(canvasColor));
             } catch (Exception e) {
                 e.printStackTrace();
             }

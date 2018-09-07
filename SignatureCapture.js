@@ -93,6 +93,7 @@ SignatureCapture.propTypes = {
     square: PropTypes.bool,
     saveImageFileInExtStorage: PropTypes.bool,
     viewMode: PropTypes.string,
+    canvasColor: PropTypes.string,
     showNativeButtons: PropTypes.bool,
     showTitleLabel: PropTypes.bool,
     maxSize:PropTypes.number

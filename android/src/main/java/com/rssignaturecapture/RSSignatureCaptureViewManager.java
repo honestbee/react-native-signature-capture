@@ -18,7 +18,6 @@ import javax.annotation.Nullable;
 public class RSSignatureCaptureViewManager extends ViewGroupManager<RSSignatureCaptureMainView> {
 
 	public static final String PROPS_SAVE_IMAGE_FILE="saveImageFileInExtStorage";
-	public static final String PROPS_CANVAS_COLOR="canvasColor";
 	public static final String PROPS_VIEW_MODE = "viewMode";
 	public static final String PROPS_SHOW_NATIVE_BUTTONS="showNativeButtons";
 	public static final String PROPS_MAX_SIZE="maxSize";
@@ -42,14 +41,6 @@ public class RSSignatureCaptureViewManager extends ViewGroupManager<RSSignatureC
 		Log.d("setFileInExtStorage:", "" + saveFile);
 		if(view!=null){
 			view.setSaveFileInExtStorage(saveFile);
-		}
-	}
-
-	@ReactProp(name = PROPS_CANVAS_COLOR)
-	public void setCanvasColor(RSSignatureCaptureMainView view, @Nullable String canvasColor) {
-		Log.d("setCanvasColor:", "" + canvasColor);
-		if(view!=null){
-			view.setCanvasColor(canvasColor);
 		}
 	}
 

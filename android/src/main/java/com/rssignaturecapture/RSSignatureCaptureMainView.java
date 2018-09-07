@@ -56,6 +56,7 @@ public class RSSignatureCaptureMainView extends LinearLayout implements OnClickL
         this.buttonsLayout = this.buttonsLayout();
         this.addView(this.buttonsLayout);
         this.addView(signatureView);
+        this.setBackgroundColor(Color.TRANSPARENT);
 
         setLayoutParams(new android.view.ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
@@ -65,15 +66,6 @@ public class RSSignatureCaptureMainView extends LinearLayout implements OnClickL
         this.saveFileInExtStorage = saveFileInExtStorage;
     }
 
-    public void setCanvasColor(String canvasColor) {
-        if (!TextUtils.isEmpty(canvasColor)) {
-            try {
-                signatureView.setBackgroundColor(Color.parseColor(canvasColor));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
 
     public void setViewMode(String viewMode) {
         this.viewMode = viewMode;

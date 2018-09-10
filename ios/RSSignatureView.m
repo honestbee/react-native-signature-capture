@@ -216,7 +216,10 @@
     }
     // Just return the base64 image if the prop was set to false or not specified
     else {
-        [self.manager publishSaveImageEvent:@"" withEncoded:base64Encoded];
+        self.onSave(@{
+                  @"pathName": tempPath,
+                  @"encoded": base64Encoded
+                });
     }
 }
 

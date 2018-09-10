@@ -211,7 +211,10 @@
     if (_saveImageFileInExtStorage) {
         BOOL isSuccess = [imageData writeToFile:tempPath atomically:YES];
         if (!isSuccess) NSLog(@"Error: Failed to write image to %@", tempPath);
-        [self.manager publishSaveImageEvent:tempPath withEncoded:base64Encoded];
+        self.onSave(@{
+                  @"pathName": tempPath,
+                  @"encoded": base64Encoded
+                });
     
     }
     // Just return the base64 image if the prop was set to false or not specified

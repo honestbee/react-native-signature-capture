@@ -2,6 +2,8 @@
 #import <OpenGLES/ES2/glext.h>
 #import "RSSignatureViewManager.h"
 
+#define                 ERROR_OPENGL 1
+
 #define             STROKE_WIDTH_MIN 0.004 // Stroke width determined by touch velocity
 #define             STROKE_WIDTH_MAX 0.030
 #define       STROKE_WIDTH_SMOOTHING 0.5   // Low pass filter alpha
@@ -29,18 +31,46 @@ typedef struct PPSSignaturePoint PPSSignaturePoint;
 // Maximum verteces in signature
 static const int maxLength = MAXIMUM_VERTECES;
 
+static inline GLvoid *mapVertexBuffer(GLuint bufferToMap, NSError **error) {
+    glBindBuffer(GL_ARRAY_BUFFER, bufferToMap);
+    
+    GLvoid *data = glMapBufferOES(GL_ARRAY_BUFFER, GL_WRITE_ONLY_OES);
+    
+    if (data == NULL && error != NULL) {
+        GLenum glError = glGetError();
+        
+        NSMutableDictionary *userInfo = [NSMutableDictionary dictionary];
+        userInfo[@"GL_ERROR"] = @(glError);
+        
+        *error = [NSError errorWithDomain:@"PPSSignatureView" code:ERROR_OPENGL userInfo:userInfo];
+    }
+    
+    return data;
+}
+
 
 // Append vertex to array buffer
-static inline void addVertex(uint *length, PPSSignaturePoint v) {
+static inline void addVertex(GLvoid *mappedBuffer, uint *length, PPSSignaturePoint vertex) {
 	if ((*length) >= maxLength) {
 		return;
 	}
 	
-	GLvoid *data = glMapBufferOES(GL_ARRAY_BUFFER, GL_WRITE_ONLY_OES);
-	memcpy(data + sizeof(PPSSignaturePoint) * (*length), &v, sizeof(PPSSignaturePoint));
-	glUnmapBufferOES(GL_ARRAY_BUFFER);
+    memcpy(mappedBuffer + sizeof(PPSSignaturePoint) * (*length), &vertex, sizeof(PPSSignaturePoint));
 	
 	(*length)++;
+}
+
+static inline void unmapVertexBuffer(GLvoid *mappedBuffer) {
+    if (mappedBuffer != NULL) {
+        GLboolean result = glUnmapBufferOES(GL_ARRAY_BUFFER);
+        
+        if (result == GL_FALSE) {
+            // GL docs say this indicates some kind of corruption, and the buffer should be reinitialized.
+            // TODO(rgrimm): Reinitialize the buffer
+        }
+    }
+    
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 static inline CGPoint QuadraticPointInCurve(CGPoint start, CGPoint end, CGPoint controlPoint, float percent) {
@@ -338,38 +368,43 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
 	CGPoint l = [t locationInView:self];
 	
 	if (t.state == UIGestureRecognizerStateRecognized) {
-		glBindBuffer(GL_ARRAY_BUFFER, dotsBuffer);
-		
-		PPSSignaturePoint touchPoint = ViewPointToGL(l, self.bounds, (GLKVector3){1, 1, 1});
-		addVertex(&dotsLength, touchPoint);
-		
-		PPSSignaturePoint centerPoint = touchPoint;
-		centerPoint.color = StrokeColor;
-		addVertex(&dotsLength, centerPoint);
-		
-		static int segments = 20;
-		GLKVector2 radius = (GLKVector2){
-			clamp(0.00001, 0.02, penThickness * generateRandom(0.5, 1.5)),
-			clamp(0.00001, 0.02, penThickness * generateRandom(0.5, 1.5))
-		};
-		GLKVector2 velocityRadius = radius;
-		float angle = 0;
-		
-		for (int i = 0; i <= segments; i++) {
-			
-			PPSSignaturePoint p = centerPoint;
-			p.vertex.x += velocityRadius.x * cosf(angle);
-			p.vertex.y += velocityRadius.y * sinf(angle);
-			
-			addVertex(&dotsLength, p);
-			addVertex(&dotsLength, centerPoint);
-			
-			angle += M_PI * 2.0 / segments;
+        NSError *error;
+        GLvoid *mappedBuffer = mapVertexBuffer(dotsBuffer, &error);
+        
+        if (mappedBuffer == NULL) {
+            // TODO(rgrimm): Handle the error condition
+        } else {
+            PPSSignaturePoint touchPoint = ViewPointToGL(l, self.bounds, (GLKVector3) {1, 1, 1});
+            addVertex(mappedBuffer, &dotsLength, touchPoint);
+            
+            PPSSignaturePoint centerPoint = touchPoint;
+            centerPoint.color = StrokeColor;
+            addVertex(mappedBuffer, &dotsLength, centerPoint);
+            
+            static int segments = 20;
+            GLKVector2 radius = (GLKVector2) {
+                clamp(0.00001, 0.02, penThickness * generateRandom(0.5, 1.5)),
+                clamp(0.00001, 0.02, penThickness * generateRandom(0.5, 1.5))
+            };
+            GLKVector2 velocityRadius = radius;
+            float angle = 0;
+            
+            for (int i = 0; i <= segments; i++) {
+                
+                PPSSignaturePoint p = centerPoint;
+                p.vertex.x += velocityRadius.x * cosf(angle);
+                p.vertex.y += velocityRadius.y * sinf(angle);
+                
+                addVertex(mappedBuffer, &dotsLength, p);
+                addVertex(mappedBuffer, &dotsLength, centerPoint);
+                
+                angle += M_PI * 2.0 / segments;
+            }
+            
+            addVertex(mappedBuffer, &dotsLength, touchPoint);
 		}
 		
-		addVertex(&dotsLength, touchPoint);
-		
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
+        unmapVertexBuffer(mappedBuffer);
 	}
 	
 	[self setNeedsDisplay];
@@ -381,89 +416,91 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
 }
 
 - (void)pan:(UIPanGestureRecognizer *)p {
-	
-	glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-	
-	CGPoint v = [p velocityInView:self];
-	CGPoint l = [p locationInView:self];
-	
-	currentVelocity = ViewPointToGL(v, self.bounds, (GLKVector3){0,0,0});
-	float distance = 0.;
-	if (previousPoint.x > 0) {
-		distance = sqrtf((l.x - previousPoint.x) * (l.x - previousPoint.x) + (l.y - previousPoint.y) * (l.y - previousPoint.y));
-	}
-	
-	float velocityMagnitude = sqrtf(v.x*v.x + v.y*v.y);
-	float clampedVelocityMagnitude = clamp(VELOCITY_CLAMP_MIN, VELOCITY_CLAMP_MAX, velocityMagnitude);
-	float normalizedVelocity = (clampedVelocityMagnitude - VELOCITY_CLAMP_MIN) / (VELOCITY_CLAMP_MAX - VELOCITY_CLAMP_MIN);
-	
-	float lowPassFilterAlpha = STROKE_WIDTH_SMOOTHING;
-	float newThickness = (STROKE_WIDTH_MAX - STROKE_WIDTH_MIN) * (1 - normalizedVelocity) + STROKE_WIDTH_MIN;
-	penThickness = penThickness * lowPassFilterAlpha + newThickness * (1 - lowPassFilterAlpha);
-	
-	if ([p state] == UIGestureRecognizerStateBegan) {
-		
-		previousPoint = l;
-		previousMidPoint = l;
-		
-		PPSSignaturePoint startPoint = ViewPointToGL(l, self.bounds, (GLKVector3){1, 1, 1});
-		previousVertex = startPoint;
-		previousThickness = penThickness;
-		
-		addVertex(&length, startPoint);
-		addVertex(&length, previousVertex);
-		
-		self.hasSignature = YES;
-		[self.manager publishDraggedEvent];
-		
-	} else if ([p state] == UIGestureRecognizerStateChanged) {
-		
-		CGPoint mid = CGPointMake((l.x + previousPoint.x) / 2.0, (l.y + previousPoint.y) / 2.0);
-		
-		if (distance > QUADRATIC_DISTANCE_TOLERANCE) {
-			// Plot quadratic bezier instead of line
-			unsigned int i;
-			
-			int segments = (int) distance / 1.5;
-			
-			float startPenThickness = previousThickness;
-			float endPenThickness = penThickness;
-			previousThickness = penThickness;
-			
-			for (i = 0; i < segments; i++)
-			{
-				penThickness = startPenThickness + ((endPenThickness - startPenThickness) / segments) * i;
-				
-				CGPoint quadPoint = QuadraticPointInCurve(previousMidPoint, mid, previousPoint, (float)i / (float)(segments));
-				
-				PPSSignaturePoint v = ViewPointToGL(quadPoint, self.bounds, StrokeColor);
-				[self addTriangleStripPointsForPrevious:previousVertex next:v];
-				
-				previousVertex = v;
+    NSError *error;
+    GLvoid *mappedBuffer = mapVertexBuffer(vertexBuffer, &error);
+    
+    if (mappedBuffer == NULL) {
+        // TODO(rgrimm): Handle the error condition
+    } else {
+        
+        CGPoint velocity = [p velocityInView:self];
+        CGPoint location = [p locationInView:self];
+        
+        currentVelocity = ViewPointToGL(velocity, self.bounds, (GLKVector3) {0, 0, 0});
+        float distance = 0.;
+        if (previousPoint.x > 0) {
+            distance = sqrtf((location.x - previousPoint.x) * (location.x - previousPoint.x) + (location.y - previousPoint.y) * (location.y - previousPoint.y));
+        }
+        
+        float velocityMagnitude = sqrtf(velocity.x * velocity.x + velocity.y * velocity.y);
+        float clampedVelocityMagnitude = clamp(VELOCITY_CLAMP_MIN, VELOCITY_CLAMP_MAX, velocityMagnitude);
+        float normalizedVelocity = (clampedVelocityMagnitude - VELOCITY_CLAMP_MIN) / (VELOCITY_CLAMP_MAX - VELOCITY_CLAMP_MIN);
+        
+        float lowPassFilterAlpha = STROKE_WIDTH_SMOOTHING;
+        float newThickness = (STROKE_WIDTH_MAX - STROKE_WIDTH_MIN) * (1 - normalizedVelocity) + STROKE_WIDTH_MIN;
+        penThickness = penThickness * lowPassFilterAlpha + newThickness * (1 - lowPassFilterAlpha);
+        
+        if ([p state] == UIGestureRecognizerStateBegan) {
+            previousPoint = location;
+            previousMidPoint = location;
+        
+            PPSSignaturePoint startPoint = ViewPointToGL(location, self.bounds, (GLKVector3) {1, 1, 1});
+            previousVertex = startPoint;
+            previousThickness = penThickness;
+            addVertex(mappedBuffer, &length, startPoint);
+            addVertex(mappedBuffer, &length, previousVertex);
+            
+            self.hasSignature = YES;
+            
+        } else if ([p state] == UIGestureRecognizerStateChanged) {
+            
+            CGPoint mid = CGPointMake((location.x + previousPoint.x) / 2.0, (location.y + previousPoint.y) / 2.0);
+            
+            if (distance > QUADRATIC_DISTANCE_TOLERANCE) {
+                // Plot quadratic bezier instead of line
+                unsigned int i;
+                
+                int segments = (int) distance / 1.5;
+                
+                float startPenThickness = previousThickness;
+                float endPenThickness = penThickness;
+                previousThickness = penThickness;
+                
+                for (i = 0; i < segments; i++) {
+                    penThickness = startPenThickness + ((endPenThickness - startPenThickness) / segments) * i;
+                    
+                    CGPoint quadPoint = QuadraticPointInCurve(previousMidPoint, mid, previousPoint, (float) i / (float) (segments));
+                    
+                    PPSSignaturePoint vertex = ViewPointToGL(quadPoint, self.bounds, StrokeColor);
+                    [self addTriangleStripPointsInMappedBuffer:mappedBuffer previous:previousVertex next:vertex];
+                    
+                    previousVertex = vertex;
+                }
+            } else if (distance > 1.0) {
+                
+                PPSSignaturePoint vertex = ViewPointToGL(location, self.bounds, StrokeColor);
+                [self addTriangleStripPointsInMappedBuffer:mappedBuffer previous:previousVertex next:vertex];
+                
+                previousVertex = vertex;
+                previousThickness = penThickness;
 			}
-		} else if (distance > 1.0) {
-			
-			PPSSignaturePoint v = ViewPointToGL(l, self.bounds, StrokeColor);
-			[self addTriangleStripPointsForPrevious:previousVertex next:v];
-			
-			previousVertex = v;
-			previousThickness = penThickness;
+            
+            previousPoint = location;
+            previousMidPoint = mid;
+            
+        } else if (p.state == UIGestureRecognizerStateEnded | p.state == UIGestureRecognizerStateCancelled) {
+            
+            PPSSignaturePoint vertex = ViewPointToGL(location, self.bounds, (GLKVector3) {1, 1, 1});
+            addVertex(mappedBuffer, &length, vertex);
+            
+            previousVertex = vertex;
+            addVertex(mappedBuffer, &length, previousVertex);
+            
+            self.hasSignature = YES;
+            ((RSSignatureView *)self.superview).onDrag(@{@"dragged": @YES});
 		}
-		
-		previousPoint = l;
-		previousMidPoint = mid;
-		
-	} else if (p.state == UIGestureRecognizerStateEnded | p.state == UIGestureRecognizerStateCancelled) {
-		
-		PPSSignaturePoint v = ViewPointToGL(l, self.bounds, (GLKVector3){1, 1, 1});
-		addVertex(&length, v);
-		
-		previousVertex = v;
-		addVertex(&length, previousVertex);
-
-		self.hasSignature = YES;
-		((RSSignatureView *)self.superview).onDrag(@{@"dragged": @YES});
 	}
+     unmapVertexBuffer(mappedBuffer);
 	
 	[self setNeedsDisplay];
 }
@@ -557,7 +594,7 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
 
 
 
-- (void)addTriangleStripPointsForPrevious:(PPSSignaturePoint)previous next:(PPSSignaturePoint)next {
+- (void)addTriangleStripPointsInMappedBuffer:(GLvoid *)mappedBuffer previous:(PPSSignaturePoint)previous next:(PPSSignaturePoint)next {
 	float toTravel = penThickness / 2.0;
 	
 	for (int i = 0; i < 2; i++) {
@@ -577,7 +614,7 @@ static PPSSignaturePoint ViewPointToGL(CGPoint viewPoint, CGRect bounds, GLKVect
 			{ p1.x + difX, p1.y + difY, 0.0 },
 			StrokeColor
 		};
-		addVertex(&length, stripPoint);
+        addVertex(mappedBuffer, &length, stripPoint);
 		
 		toTravel *= -1;
 	}
